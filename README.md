@@ -1,4 +1,13 @@
-# Music IoT LCD Visualizer
+<div align="center">
+
+# 🎵 Music IoT LCD Visualizer
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blueviolet.svg?style=for-the-badge)](./LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-macOS-black?style=for-the-badge&logo=apple)]()
+[![Arduino](https://img.shields.io/badge/Arduino-Compatible-00979D?style=for-the-badge&logo=arduino&logoColor=white)]()
+[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)]()
+
+</div>
 
 Project ini menghubungkan Python di macOS dengan Arduino untuk membuat dashboard LCD 16x2 berbasis I2C. Saat Apple Music memutar lagu, LCD menampilkan judul lagu berjalan, visualizer audio, dan LED yang bereaksi terhadap bass. Saat tidak ada lagu yang diputar, LCD berubah menjadi monitor jam, tanggal, CPU, dan RAM.
 
@@ -182,4 +191,39 @@ Ganti `USERNAME` dan `NAMA_REPO` sesuai akun GitHub kamu.
 
 ## Lisensi
 
-Silakan gunakan dan modifikasi project ini untuk belajar atau pengembangan pribadi.
+```
+MIT License
+
+Copyright (c) 2026 FitoRifqi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+> [!NOTE]
+> Project ini dibuat untuk tujuan pembelajaran dan eksperimen pribadi.
+> Bebas digunakan, dimodifikasi, dan didistribusikan selama menyertakan
+> copyright notice di atas.
+
+---
+
+<div align="center">
+
+Made with ❤️ + ☕ by **FitoRifqi** &nbsp;·&nbsp; Powered by Arduino & Python
+
+</div>
