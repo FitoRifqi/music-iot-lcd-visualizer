@@ -1,5 +1,6 @@
 import os
 import subprocess
+import threading
 import time
 from datetime import datetime
 
@@ -7,6 +8,8 @@ import numpy as np
 import psutil
 import pyaudio
 import serial
+
+from web_dashboard import create_shared_state, start_dashboard
 
 
 SERIAL_PORT = os.getenv("MUSIC_IOT_SERIAL_PORT", "/dev/cu.usbserial-A5069RR4")
@@ -19,9 +22,22 @@ CHANNELS = 1
 RATE = 44100
 
 HISTORY_SIZE = 50
-THRESHOLD_MULTIPLIER = 1.4
-MIN_BASS_AMPLITUDE = 30
+FLUX_THRESHOLD_MULTIPLIER = 1.8
+MIN_BASS_AMPLITUDE = 25
 SPECTRUM_COLUMNS = 16
+DECAY_FACTOR = 0.55
+SUB_BASS_UPPER = 60
+MID_BASS_UPPER = 150
+FLUX_HISTORY_SIZE = 60
+KICK_DRUM_LOW = 40
+KICK_DRUM_HIGH = 100
+
+# Logarithmic frequency bands (Hz) — lebih banyak kolom untuk bass/low-mid
+# seperti lighting setup asli: bass dominan, treble compressed
+LOG_FREQ_EDGES = [
+    20, 35, 50, 70, 100, 140, 200, 300,
+    450, 650, 1000, 1500, 2500, 4000, 7000, 11000, 20000,
+]
 
 MONTH_NAMES = {
     1: "JAN",
@@ -85,47 +101,105 @@ def open_serial_connection():
     return arduino
 
 
-def calculate_bass_brightness(bass_amplitude, history, current_brightness):
-    history.append(bass_amplitude)
-    if len(history) > HISTORY_SIZE:
-        history.pop(0)
+def calculate_spectral_flux(current_fft, previous_fft):
+    """Hitung spectral flux: jumlah kenaikan energi antar frame.
 
-    history_average = np.mean(history)
-    is_bass_hit = (
-        bass_amplitude > history_average * THRESHOLD_MULTIPLIER
-        and bass_amplitude > MIN_BASS_AMPLITUDE
-    )
+    Hanya menghitung kenaikan (half-wave rectification) supaya
+    lebih sensitif terhadap onset/serangan bass.
+    """
+    if previous_fft is None or len(previous_fft) != len(current_fft):
+        return 0.0
+    diff = current_fft - previous_fft
+    return float(np.sum(np.maximum(diff, 0)))
+
+
+def calculate_bass_brightness(
+    kick_amp, sub_bass_amp, mid_bass_amp, flux, flux_history,
+    current_brightness,
+):
+    """Concert-style beat detection: flash tajam + blackout cepat.
+
+    Fokus di kick drum (40-100Hz). Flash langsung ke 255 saat beat
+    terdeteksi, lalu blackout cepat (decay 0.55) supaya kontras
+    antara hit dan silence sangat jelas, seperti lighting konser.
+    """
+    flux_history.append(flux)
+    if len(flux_history) > FLUX_HISTORY_SIZE:
+        flux_history.pop(0)
+
+    flux_median = float(np.median(flux_history)) if flux_history else 0.0
+    flux_threshold = flux_median * FLUX_THRESHOLD_MULTIPLIER
+
+    # Kick drum dominan, sub-bass secondary
+    combined_bass = kick_amp * 2.0 + sub_bass_amp * 0.8 + mid_bass_amp * 0.3
+    is_bass_hit = flux > flux_threshold and combined_bass > MIN_BASS_AMPLITUDE
 
     if is_bass_hit:
-        target_brightness = int(np.log10(bass_amplitude + 1) * 70) - 60
-        return max(180, min(255, target_brightness))
+        # Concert-style: langsung full brightness, semakin kuat semakin terang
+        hit_strength = min(1.0, combined_bass / 200.0)
+        target = int(200 + hit_strength * 55)  # range 200-255
+        return min(255, target)
 
-    return max(0, current_brightness - 25)
+    # Blackout cepat — kontras tajam seperti strobe lighting
+    return max(0, int(current_brightness * DECAY_FACTOR))
 
 
-def build_visualizer_packet(stream, bass_history, current_brightness):
+def build_visualizer_packet(
+    stream, flux_history, current_brightness, previous_fft
+):
     data = stream.read(CHUNK, exception_on_overflow=False)
     samples = np.frombuffer(data, dtype=np.int16)
     fft_data = np.abs(np.fft.fft(samples))[: CHUNK // 2]
 
+    flux = calculate_spectral_flux(fft_data, previous_fft)
+
     freq_resolution = RATE / CHUNK
-    bass_low_idx = int(20 / freq_resolution)
-    bass_high_idx = int(150 / freq_resolution)
-    bass_frequencies = fft_data[bass_low_idx:bass_high_idx]
-    bass_amplitude = np.mean(bass_frequencies) if len(bass_frequencies) else 0
+    sub_bass_idx = int(20 / freq_resolution)
+    kick_low_idx = int(KICK_DRUM_LOW / freq_resolution)
+    kick_high_idx = int(KICK_DRUM_HIGH / freq_resolution)
+    sub_bass_upper_idx = int(SUB_BASS_UPPER / freq_resolution)
+    mid_bass_upper_idx = int(MID_BASS_UPPER / freq_resolution)
+
+    kick_freq = fft_data[kick_low_idx:kick_high_idx]
+    sub_bass_freq = fft_data[sub_bass_idx:sub_bass_upper_idx]
+    mid_bass_freq = fft_data[sub_bass_upper_idx:mid_bass_upper_idx]
+
+    kick_amp = float(np.mean(kick_freq)) if len(kick_freq) else 0.0
+    sub_bass_amp = float(np.mean(sub_bass_freq)) if len(sub_bass_freq) else 0.0
+    mid_bass_amp = float(np.mean(mid_bass_freq)) if len(mid_bass_freq) else 0.0
+
     brightness = calculate_bass_brightness(
-        bass_amplitude,
-        bass_history,
+        kick_amp,
+        sub_bass_amp,
+        mid_bass_amp,
+        flux,
+        flux_history,
         current_brightness,
     )
 
     columns = []
-    for chunk in np.array_split(fft_data, SPECTRUM_COLUMNS):
-        amplitude = np.mean(chunk)
-        scaled_value = int(np.log10(amplitude + 1) * 2.5) - 4
-        columns.append(str(max(0, min(8, scaled_value))))
+    column_values = []
+    freq_res = RATE / CHUNK
+    for i in range(SPECTRUM_COLUMNS):
+        low_hz = LOG_FREQ_EDGES[i]
+        high_hz = LOG_FREQ_EDGES[i + 1]
+        low_bin = max(1, int(low_hz / freq_res))
+        high_bin = min(len(fft_data), int(high_hz / freq_res))
+        if high_bin <= low_bin:
+            high_bin = low_bin + 1
+        band = fft_data[low_bin:high_bin]
+        amplitude = float(np.mean(band)) if len(band) else 0.0
+        scaled_value = int(np.log10(amplitude + 1) * 2.0) - 3
+        clamped = max(0, min(8, scaled_value))
+        columns.append(str(clamped))
+        column_values.append(clamped)
 
-    return f"{','.join(columns)}|{brightness}\n", brightness
+    return (
+        f"{','.join(columns)}|{brightness}\n",
+        brightness,
+        fft_data,
+        column_values,
+    )
 
 
 def build_system_packet():
@@ -151,6 +225,18 @@ def main():
     stream = None
     arduino = None
 
+    # Inisialisasi baseline psutil supaya pembacaan pertama tidak 0%
+    psutil.cpu_percent()
+
+    shared_state = create_shared_state()
+
+    dashboard_thread = threading.Thread(
+        target=start_dashboard,
+        args=(shared_state,),
+        daemon=True,
+    )
+    dashboard_thread.start()
+
     try:
         stream = open_audio_stream(audio)
     except OSError as error:
@@ -161,17 +247,19 @@ def main():
     try:
         arduino = open_serial_connection()
         print("Sistem Dashboard Premium (Clock & Fluid Monitor) Aktif!")
+        print("Web Dashboard: http://localhost:5050")
     except serial.SerialException as error:
         close_resources(audio, stream=stream)
         print(f"Gagal tersambung ke Arduino: {error}")
         return
 
-    bass_history = []
+    flux_history = []
     current_brightness = 0
     current_track_name = ""
     music_state = "IDLE"
     last_metadata_check = 0
     last_system_check = 0
+    previous_fft = None
 
     try:
         while True:
@@ -185,24 +273,58 @@ def main():
                     if track_info != current_track_name:
                         current_track_name = track_info
                         arduino.write(f"TXT:{current_track_name}\n".encode())
+                    shared_state.update(
+                        mode="PLAYING",
+                        track=current_track_name,
+                    )
                 else:
                     music_state = "MONITOR"
                     current_track_name = ""
+                    shared_state.update(mode="MONITOR", track="")
                 last_metadata_check = now
 
+            # Selalu update system stats ke dashboard, apapun mode-nya
+            if now - last_system_check > 1.0:
+                now_dt = datetime.now()
+                cpu = int(psutil.cpu_percent())
+                ram = int(psutil.virtual_memory().percent)
+                time_str = now_dt.strftime("%H:%M")
+                date_str = f"{now_dt.strftime('%d')} {MONTH_NAMES.get(now_dt.month, 'JAN')}"
+
+                shared_state.update(
+                    cpu=cpu,
+                    ram=ram,
+                    time=time_str,
+                    date=date_str,
+                )
+
+                if music_state != "PLAYING":
+                    sys_packet = f"SYS:{time_str},{date_str},{cpu},{ram}\n"
+                    arduino.write(sys_packet.encode())
+                    shared_state.update(
+                        visualizer=[0] * SPECTRUM_COLUMNS,
+                        brightness=0,
+                    )
+
+                last_system_check = now
+
             if music_state == "PLAYING":
-                packet, current_brightness = build_visualizer_packet(
-                    stream,
-                    bass_history,
-                    current_brightness,
+                packet, current_brightness, previous_fft, col_values = (
+                    build_visualizer_packet(
+                        stream,
+                        flux_history,
+                        current_brightness,
+                        previous_fft,
+                    )
                 )
                 arduino.write(packet.encode())
+                shared_state.update(
+                    visualizer=col_values,
+                    brightness=current_brightness,
+                )
                 time.sleep(0.01)
                 continue
 
-            if now - last_system_check > 1.0:
-                arduino.write(build_system_packet().encode())
-                last_system_check = now
             time.sleep(0.1)
 
     except KeyboardInterrupt:
@@ -213,3 +335,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

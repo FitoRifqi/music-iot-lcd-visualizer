@@ -6,18 +6,23 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS-black?style=for-the-badge&logo=apple)]()
 [![Arduino](https://img.shields.io/badge/Arduino-Compatible-00979D?style=for-the-badge&logo=arduino&logoColor=white)]()
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)]()
+[![Flask](https://img.shields.io/badge/Flask-Dashboard-000000?style=for-the-badge&logo=flask&logoColor=white)]()
 
 </div>
 
-Project ini menghubungkan Python di macOS dengan Arduino untuk membuat dashboard LCD 16x2 berbasis I2C. Saat Apple Music memutar lagu, LCD menampilkan judul lagu berjalan, visualizer audio, dan LED yang bereaksi terhadap bass. Saat tidak ada lagu yang diputar, LCD berubah menjadi monitor jam, tanggal, CPU, dan RAM.
+Project ini menghubungkan Python di macOS dengan Arduino untuk membuat dashboard LCD 16x2 berbasis I2C. Saat Apple Music memutar lagu, LCD menampilkan judul lagu berjalan, visualizer audio 16-band logaritmik, dan LED yang bereaksi terhadap kick drum dengan gaya lighting konser. Saat tidak ada lagu yang diputar, LCD berubah menjadi monitor jam, tanggal, CPU, dan RAM. Semua data juga ditampilkan secara real-time di web dashboard bertema audio console.
 
 ## Fitur
 
-- Menampilkan judul lagu dari Apple Music.
-- Visualizer 16 kolom di LCD 16x2.
-- LED PWM bereaksi terhadap bass musik.
+- Menampilkan judul lagu dari Apple Music dengan scrolling text.
+- Visualizer spectrum 16-band logaritmik di LCD 16x2.
+- LED PWM concert-style dengan kick drum detection (40-100Hz).
+- Beat detection menggunakan spectral flux + adaptive median threshold.
 - Mode monitor otomatis saat musik pause atau Apple Music tidak berjalan.
 - Menampilkan jam, tanggal, CPU, dan RAM.
+- Web dashboard real-time bertema audio console di `http://localhost:5050`.
+- LED strip meter, VU meter, dan spectrum analyzer di browser.
+- Akses dashboard dari perangkat lain di jaringan WiFi yang sama.
 - Konfigurasi serial port dan audio device lewat environment variable.
 
 ## Hardware
@@ -45,7 +50,10 @@ Catatan: pada beberapa board, pin I2C bisa berbeda. Cek dokumentasi board yang d
 ```text
 .
 ├── music_sync.py
+├── web_dashboard.py
 ├── requirements.txt
+├── templates/
+│   └── dashboard.html
 ├── sketch_jun21a/
 │   └── sketch_jun21a.ino
 └── README.md
@@ -123,13 +131,13 @@ MUSIC_IOT_SERIAL_PORT=/dev/cu.usbmodem1101 MUSIC_IOT_AUDIO_DEVICE_INDEX=0 python
 
 ## Cara Kerja
 
-Python membaca status Apple Music lewat AppleScript. Jika lagu sedang berjalan, Python mengirim:
+Python membaca status Apple Music lewat AppleScript. Jika lagu sedang berjalan, Python mengirim judul lagu:
 
 ```text
 TXT:Judul Lagu - Artist
 ```
 
-Setelah itu Python membaca input audio, melakukan FFT dengan NumPy, lalu mengirim data visualizer:
+Setelah itu Python membaca input audio, melakukan FFT dengan NumPy menggunakan 16 logarithmic frequency bands (20Hz – 20kHz), lalu mengirim data visualizer:
 
 ```text
 0,1,2,3,4,5,6,7,8,7,6,5,4,3,2,1|180
@@ -137,13 +145,17 @@ Setelah itu Python membaca input audio, melakukan FFT dengan NumPy, lalu mengiri
 
 Bagian sebelum `|` adalah tinggi 16 kolom LCD. Bagian setelah `|` adalah brightness LED.
 
+### Beat Detection
+
+LED menggunakan algoritma concert-style beat detection:
+
+1. **Bass-only spectral flux** — perubahan energi dihitung hanya di range 0-150Hz, mengabaikan hi-hat, cymbal, dan vocal.
+2. **Kick drum focus (40-100Hz)** — menggunakan peak amplitude (bukan mean) untuk mendeteksi pukulan kick drum dengan akurat.
+3. **Adaptive median threshold** — threshold otomatis menyesuaikan volume dan tempo lagu.
+4. **Beat cooldown 80ms** — mencegah ghost trigger / double-flash.
+5. **Concert-style response** — flash instan ke 210-255 saat beat terdeteksi, lalu blackout cepat (decay 0.50).
+
 Jika musik tidak berjalan, Python mengirim data monitor:
-
-```text
-SYS:17:06,21 JUN,12,65
-```
-
-Formatnya adalah:
 
 ```text
 SYS:JAM,TANGGAL,CPU,RAM
@@ -173,6 +185,33 @@ SYS:JAM,TANGGAL,CPU,RAM
 - Cek wiring SDA/SCL.
 - Cek kontras LCD lewat trimpot modul I2C.
 - Cek alamat I2C LCD, biasanya `0x27` atau `0x3F`.
+
+## Web Dashboard
+
+Saat `music_sync.py` dijalankan, web dashboard otomatis aktif di:
+
+```
+http://localhost:5050
+```
+
+Dashboard menggunakan tema audio console dengan tampilan:
+
+- **Now Playing** — judul lagu dan artist dengan EQ bar animation.
+- **Spectrum Analyzer** — visualizer 16-band real-time dengan peak hold indicator, label frekuensi (Hz), dan skala dB.
+- **LED Output** — LED strip meter hijau/kuning/merah seperti mixer audio.
+- **System Monitor** — jam, tanggal, CPU load, dan memory dengan VU meter bar.
+
+Teknologi: Flask + Server-Sent Events (SSE) + Canvas API.
+
+Untuk mengakses dashboard dari perangkat lain di jaringan WiFi yang sama:
+
+```bash
+# Cek IP laptop
+ipconfig getifaddr en0
+
+# Buka di browser HP
+# http://<IP-LAPTOP>:5050
+```
 
 ## Lisensi
 

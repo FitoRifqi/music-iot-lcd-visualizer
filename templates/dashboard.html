@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music IoT Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg-body: #111114;
+            --bg-panel: #1a1a1f;
+            --bg-inset: #0e0e12;
+            --bg-channel: #141418;
+            --border-panel: #2a2a32;
+            --border-groove: #0a0a0e;
+            --text-bright: #e8e8ec;
+            --text-mid: #9090a0;
+            --text-dim: #505060;
+            --led-green: #22c55e;
+            --led-yellow: #eab308;
+            --led-red: #ef4444;
+            --led-cyan: #06b6d4;
+            --led-amber: #f59e0b;
+            --accent: #8b5cf6;
+            --meter-bg: #0a0a0e;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-body);
+            color: var(--text-bright);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+
+        /* === HEADER === */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-panel);
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--bg-inset);
+            border: 1px solid var(--border-panel);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .header-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .header-sub {
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0.05em;
+        }
+
+        .status-led {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+        }
+
+        .led-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 1px solid rgba(0,0,0,0.5);
+        }
+
+        .led-dot.playing {
+            background: var(--led-green);
+            box-shadow: 0 0 6px var(--led-green), inset 0 -1px 1px rgba(0,0,0,0.3);
+        }
+
+        .led-dot.monitor {
+            background: var(--led-amber);
+            box-shadow: 0 0 6px var(--led-amber), inset 0 -1px 1px rgba(0,0,0,0.3);
+        }
+
+        .led-dot.off {
+            background: #333;
+        }
+
+        /* === PANELS === */
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-panel);
+            border-radius: 6px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border-groove);
+            background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+        }
+
+        .panel-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-dim);
+        }
+
+        .panel-body {
+            padding: 16px;
+        }
+
+        /* === NOW PLAYING === */
+        .track-display {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .track-indicator {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-inset);
+            border: 1px solid var(--border-panel);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .track-indicator .eq-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 18px;
+        }
+
+        .eq-bar {
+            width: 3px;
+            background: var(--led-green);
+            border-radius: 1px;
+            transition: height 0.15s ease;
+        }
+
+        .eq-bars.active .eq-bar:nth-child(1) { height: 8px; animation: eqBounce 0.8s ease-in-out infinite; }
+        .eq-bars.active .eq-bar:nth-child(2) { height: 14px; animation: eqBounce 0.6s ease-in-out 0.1s infinite; }
+        .eq-bars.active .eq-bar:nth-child(3) { height: 10px; animation: eqBounce 0.7s ease-in-out 0.2s infinite; }
+        .eq-bars.active .eq-bar:nth-child(4) { height: 6px; animation: eqBounce 0.9s ease-in-out 0.05s infinite; }
+
+        .eq-bars:not(.active) .eq-bar { height: 3px; background: var(--text-dim); }
+
+        @keyframes eqBounce {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(0.4); }
+        }
+
+        .track-meta {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .track-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-bright);
+        }
+
+        .track-artist {
+            font-size: 0.75rem;
+            color: var(--text-mid);
+            margin-top: 2px;
+        }
+
+        .track-idle {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        /* === SPECTRUM ANALYZER === */
+        .spectrum-section {
+            background: var(--bg-inset);
+            border: 1px solid var(--border-groove);
+            border-radius: 4px;
+            padding: 12px 12px 4px;
+        }
+
+        #visualizer {
+            width: 100%;
+            height: 160px;
+            display: block;
+        }
+
+        /* LED meter bar */
+        .led-meter {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-groove);
+        }
+
+        .led-meter-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .led-meter-label span {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.55rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+        }
+
+        .led-meter-value {
+            color: var(--text-mid) !important;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .led-strip {
+            display: flex;
+            gap: 2px;
+            height: 8px;
+        }
+
+        .led-segment {
+            flex: 1;
+            border-radius: 1px;
+            background: #1a1a20;
+            border: 1px solid rgba(0,0,0,0.3);
+            transition: background 0.06s;
+        }
+
+        .led-segment.on-green { background: var(--led-green); box-shadow: 0 0 3px rgba(34, 197, 94, 0.3); }
+        .led-segment.on-yellow { background: var(--led-yellow); box-shadow: 0 0 3px rgba(234, 179, 8, 0.3); }
+        .led-segment.on-red { background: var(--led-red); box-shadow: 0 0 3px rgba(239, 68, 68, 0.3); }
+
+        /* === SYSTEM MONITOR === */
+        .sys-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .sys-channel {
+            background: var(--bg-channel);
+            border: 1px solid var(--border-groove);
+            border-radius: 4px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .sys-channel-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.55rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+
+        .sys-readout {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.6rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .sys-readout.time-val { color: var(--text-bright); }
+        .sys-readout.date-val { color: var(--text-mid); font-size: 1.0rem; }
+
+        /* VU Meter style for CPU/RAM */
+        .vu-meter {
+            margin-top: 8px;
+        }
+
+        .vu-track {
+            height: 6px;
+            background: var(--meter-bg);
+            border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.4);
+            overflow: hidden;
+        }
+
+        .vu-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        .vu-fill.cpu { background: linear-gradient(90deg, var(--led-green), var(--led-cyan)); }
+        .vu-fill.ram { background: linear-gradient(90deg, var(--led-amber), var(--led-red)); }
+
+        .vu-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .vu-value.cpu-val { color: var(--led-cyan); }
+        .vu-value.ram-val { color: var(--led-amber); }
+
+        /* === CONNECTION === */
+        .conn-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.55rem;
+            color: var(--text-dim);
+            letter-spacing: 0.05em;
+        }
+
+        .conn-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+        }
+
+        .conn-dot.ok { background: var(--led-green); box-shadow: 0 0 4px rgba(34, 197, 94, 0.4); }
+        .conn-dot.err { background: var(--led-red); }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .container { padding: 12px 8px; }
+            .header { padding: 10px 14px; }
+            .header-title { font-size: 0.75rem; }
+            #visualizer { height: 120px; }
+            .sys-grid { gap: 6px; }
+            .sys-channel { padding: 10px; }
+            .sys-readout { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo-icon">🎛️</div>
+                <div>
+                    <div class="header-title">Music IoT</div>
+                    <div class="header-sub">LCD Visualizer Monitor</div>
+                </div>
+            </div>
+            <div class="status-led">
+                <span id="statusText">STANDBY</span>
+                <div class="led-dot off" id="statusLed"></div>
+            </div>
+        </div>
+
+        <!-- Now Playing -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-label">Channel — Now Playing</span>
+            </div>
+            <div class="panel-body">
+                <div class="track-display">
+                    <div class="track-indicator">
+                        <div class="eq-bars" id="eqBars">
+                            <div class="eq-bar"></div>
+                            <div class="eq-bar"></div>
+                            <div class="eq-bar"></div>
+                            <div class="eq-bar"></div>
+                        </div>
+                    </div>
+                    <div class="track-meta">
+                        <div class="track-name" id="trackTitle">No Signal</div>
+                        <div class="track-artist" id="trackArtist">Waiting for input...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spectrum Analyzer -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-label">Spectrum Analyzer</span>
+                <span class="panel-label" style="color: var(--led-green);">16-Band</span>
+            </div>
+            <div class="panel-body" style="padding: 12px;">
+                <div class="spectrum-section">
+                    <canvas id="visualizer"></canvas>
+
+                    <div class="led-meter">
+                        <div class="led-meter-label">
+                            <span>LED Output</span>
+                            <span class="led-meter-value" id="brightnessValue">0%</span>
+                        </div>
+                        <div class="led-strip" id="ledStrip"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Monitor -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-label">System Monitor</span>
+                <span class="panel-label" style="color: var(--text-dim);">◆ Live</span>
+            </div>
+            <div class="panel-body">
+                <div class="sys-grid">
+                    <div class="sys-channel">
+                        <div class="sys-channel-label">Time</div>
+                        <div class="sys-readout time-val" id="sysTime">--:--</div>
+                    </div>
+                    <div class="sys-channel">
+                        <div class="sys-channel-label">Date</div>
+                        <div class="sys-readout date-val" id="sysDate">-- ---</div>
+                    </div>
+                    <div class="sys-channel">
+                        <div class="sys-channel-label">CPU Load</div>
+                        <div class="vu-value cpu-val" id="cpuValue">0%</div>
+                        <div class="vu-meter">
+                            <div class="vu-track">
+                                <div class="vu-fill cpu" id="cpuBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sys-channel">
+                        <div class="sys-channel-label">Memory</div>
+                        <div class="vu-value ram-val" id="ramValue">0%</div>
+                        <div class="vu-meter">
+                            <div class="vu-track">
+                                <div class="vu-fill ram" id="ramBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="conn-bar">
+            <div class="conn-dot err" id="connDot"></div>
+            <span id="connText">CONNECTING...</span>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        // === LED Strip Setup ===
+        const LED_COUNT = 20;
+        const ledStrip = document.getElementById("ledStrip");
+        for (let i = 0; i < LED_COUNT; i++) {
+            const seg = document.createElement("div");
+            seg.className = "led-segment";
+            ledStrip.appendChild(seg);
+        }
+
+        function updateLedStrip(percent) {
+            const segs = ledStrip.children;
+            const activeCount = Math.round((percent / 100) * LED_COUNT);
+            for (let i = 0; i < LED_COUNT; i++) {
+                segs[i].className = "led-segment";
+                if (i < activeCount) {
+                    if (i < LED_COUNT * 0.6) segs[i].classList.add("on-green");
+                    else if (i < LED_COUNT * 0.85) segs[i].classList.add("on-yellow");
+                    else segs[i].classList.add("on-red");
+                }
+            }
+        }
+
+        // === Spectrum Visualizer ===
+        const canvas = document.getElementById("visualizer");
+        const ctx = canvas.getContext("2d");
+        const COLUMNS = 16;
+        const MAX_HEIGHT = 8;
+        const SMOOTHING = 0.35;
+        const PEAK_DECAY = 0.03;
+
+        let smoothedValues = new Array(COLUMNS).fill(0);
+        let targetValues = new Array(COLUMNS).fill(0);
+        let peakValues = new Array(COLUMNS).fill(0);
+        let peakHoldFrames = new Array(COLUMNS).fill(0);
+
+        const BAND_LABELS = [
+            "20", "35", "50", "70", "100", "140", "200", "300",
+            "450", "650", "1K", "1.5K", "2.5K", "4K", "7K", "11K"
+        ];
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+        }
+
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        function getBarColor(index, ratio) {
+            const t = index / (COLUMNS - 1);
+            if (ratio > 0.85) return { main: "#ef4444", glow: "rgba(239,68,68,0.4)" };
+            if (ratio > 0.65) return { main: "#eab308", glow: "rgba(234,179,8,0.3)" };
+            // Gradient green from warm to cool across bands
+            const hue = 120 + t * 60;
+            return {
+                main: `hsl(${hue}, 70%, ${40 + ratio * 15}%)`,
+                glow: `hsla(${hue}, 70%, 50%, ${0.15 + ratio * 0.25})`
+            };
+        }
+
+        function drawVisualizer() {
+            const w = canvas.getBoundingClientRect().width;
+            const h = canvas.getBoundingClientRect().height;
+            const gap = 3;
+            const barWidth = (w - gap * (COLUMNS + 1)) / COLUMNS;
+            const maxBarH = h - 20;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid marks
+            ctx.strokeStyle = "rgba(255,255,255,0.04)";
+            ctx.lineWidth = 0.5;
+            for (let g = 1; g <= 4; g++) {
+                const gy = h - 10 - (maxBarH / 4) * g;
+                ctx.beginPath();
+                ctx.moveTo(0, gy);
+                ctx.lineTo(w, gy);
+                ctx.stroke();
+            }
+
+            // dB scale on right
+            ctx.font = "7px JetBrains Mono, monospace";
+            ctx.textAlign = "right";
+            ctx.fillStyle = "rgba(255,255,255,0.1)";
+            for (let g = 1; g <= 4; g++) {
+                const gy = h - 10 - (maxBarH / 4) * g;
+                ctx.fillText(`-${(4 - g) * 6}`, w - 2, gy + 3);
+            }
+
+            for (let i = 0; i < COLUMNS; i++) {
+                const isBass = i < 6;
+                const smooth = isBass ? SMOOTHING * 1.2 : SMOOTHING;
+                smoothedValues[i] += (targetValues[i] - smoothedValues[i]) * smooth;
+
+                const val = smoothedValues[i];
+                const ratio = val / MAX_HEIGHT;
+                const barHeight = ratio * maxBarH;
+                const x = gap + i * (barWidth + gap);
+                const y = h - barHeight - 10;
+                const colors = getBarColor(i, ratio);
+
+                // Peak hold
+                if (val > peakValues[i]) {
+                    peakValues[i] = val;
+                    peakHoldFrames[i] = 25;
+                } else if (peakHoldFrames[i] > 0) {
+                    peakHoldFrames[i]--;
+                } else {
+                    peakValues[i] = Math.max(0, peakValues[i] - PEAK_DECAY * MAX_HEIGHT);
+                }
+
+                // Idle baseline
+                if (barHeight < 1) {
+                    ctx.fillStyle = "rgba(255,255,255,0.06)";
+                    ctx.fillRect(x, h - 11, barWidth, 1);
+                } else {
+                    // Glow
+                    ctx.shadowColor = colors.glow;
+                    ctx.shadowBlur = isBass ? 10 + ratio * 8 : 5 + ratio * 5;
+
+                    // Bar
+                    const r = Math.min(barWidth / 2, 2);
+                    ctx.beginPath();
+                    ctx.moveTo(x, h - 10);
+                    ctx.lineTo(x, y + r);
+                    ctx.quadraticCurveTo(x, y, x + r, y);
+                    ctx.lineTo(x + barWidth - r, y);
+                    ctx.quadraticCurveTo(x + barWidth, y, x + barWidth, y + r);
+                    ctx.lineTo(x + barWidth, h - 10);
+                    ctx.closePath();
+
+                    const grad = ctx.createLinearGradient(x, h - 10, x, y);
+                    grad.addColorStop(0, "rgba(255,255,255,0.03)");
+                    grad.addColorStop(0.4, colors.main);
+                    grad.addColorStop(1, colors.main);
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+
+                    ctx.shadowBlur = 0;
+                }
+
+                // Peak indicator
+                if (peakValues[i] > 0.3) {
+                    const peakY = h - 10 - (peakValues[i] / MAX_HEIGHT) * maxBarH;
+                    const peakColor = peakValues[i] / MAX_HEIGHT > 0.85 ? "rgba(239,68,68,0.7)" :
+                                     peakValues[i] / MAX_HEIGHT > 0.65 ? "rgba(234,179,8,0.6)" :
+                                     "rgba(34,197,94,0.5)";
+                    ctx.fillStyle = peakColor;
+                    ctx.fillRect(x, peakY - 1, barWidth, 2);
+                }
+            }
+
+            // Frequency labels
+            ctx.font = "7px JetBrains Mono, monospace";
+            ctx.textAlign = "center";
+            ctx.fillStyle = "rgba(255,255,255,0.15)";
+            ctx.shadowBlur = 0;
+            for (let i = 0; i < COLUMNS; i++) {
+                const x = gap + i * (barWidth + gap) + barWidth / 2;
+                ctx.fillText(BAND_LABELS[i], x, h - 1);
+            }
+
+            requestAnimationFrame(drawVisualizer);
+        }
+
+        drawVisualizer();
+
+        // === SSE Connection ===
+        function connectSSE() {
+            const source = new EventSource("/api/stream");
+
+            source.onopen = function () {
+                document.getElementById("connDot").className = "conn-dot ok";
+                document.getElementById("connText").textContent = "CONNECTED";
+            };
+
+            source.onmessage = function (event) {
+                try {
+                    updateDashboard(JSON.parse(event.data));
+                } catch (e) { /* ignore */ }
+            };
+
+            source.onerror = function () {
+                document.getElementById("connDot").className = "conn-dot err";
+                document.getElementById("connText").textContent = "RECONNECTING...";
+                source.close();
+                setTimeout(connectSSE, 2000);
+            };
+        }
+
+        function updateDashboard(data) {
+            const isPlaying = data.mode === "PLAYING";
+
+            // Status LED
+            const led = document.getElementById("statusLed");
+            const statusText = document.getElementById("statusText");
+            led.className = "led-dot " + (isPlaying ? "playing" : "monitor");
+            statusText.textContent = isPlaying ? "● PLAYING" : "● MONITOR";
+            statusText.style.color = isPlaying ? "var(--led-green)" : "var(--led-amber)";
+
+            // Track info
+            const eqBars = document.getElementById("eqBars");
+            const title = document.getElementById("trackTitle");
+            const artist = document.getElementById("trackArtist");
+
+            if (isPlaying && data.track) {
+                eqBars.className = "eq-bars active";
+                const parts = data.track.split(" - ");
+                title.textContent = parts[0] || data.track;
+                title.style.color = "var(--text-bright)";
+                artist.textContent = parts.length > 1 ? parts.slice(1).join(" - ") : "";
+            } else {
+                eqBars.className = "eq-bars";
+                title.textContent = "No Signal";
+                title.style.color = "var(--text-dim)";
+                artist.textContent = "Waiting for input...";
+            }
+
+            // Visualizer
+            if (data.visualizer && data.visualizer.length === COLUMNS) {
+                for (let i = 0; i < COLUMNS; i++) {
+                    targetValues[i] = data.visualizer[i];
+                }
+            }
+
+            // LED Brightness strip
+            const brightPct = Math.round((data.brightness / 255) * 100);
+            document.getElementById("brightnessValue").textContent = brightPct + "%";
+            updateLedStrip(brightPct);
+
+            // System
+            document.getElementById("sysTime").textContent = data.time || "--:--";
+            document.getElementById("sysDate").textContent = data.date || "-- ---";
+
+            const cpu = data.cpu || 0;
+            document.getElementById("cpuValue").textContent = cpu + "%";
+            document.getElementById("cpuBar").style.width = cpu + "%";
+
+            const ram = data.ram || 0;
+            document.getElementById("ramValue").textContent = ram + "%";
+            document.getElementById("ramBar").style.width = ram + "%";
+        }
+
+        connectSSE();
+    })();
+    </script>
+</body>
+</html>
