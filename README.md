@@ -29,14 +29,14 @@ Project ini menghubungkan Python di macOS dengan Arduino untuk membuat dashboard
 
 ## Wiring
 
-| Komponen | Arduino |
-| --- | --- |
-| LCD SDA | A4 |
-| LCD SCL | A5 |
-| LCD VCC | 5V |
-| LCD GND | GND |
+| Komponen    | Arduino           |
+| ----------- | ----------------- |
+| LCD SDA     | A4                |
+| LCD SCL     | A5                |
+| LCD VCC     | 5V                |
+| LCD GND     | GND               |
 | LED positif | D9 lewat resistor |
-| LED negatif | GND |
+| LED negatif | GND               |
 
 Catatan: pada beberapa board, pin I2C bisa berbeda. Cek dokumentasi board yang dipakai.
 
@@ -174,21 +174,6 @@ SYS:JAM,TANGGAL,CPU,RAM
 - Cek kontras LCD lewat trimpot modul I2C.
 - Cek alamat I2C LCD, biasanya `0x27` atau `0x3F`.
 
-## Upload ke GitHub
-
-Jika folder ini belum menjadi repository Git:
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/USERNAME/NAMA_REPO.git
-git push -u origin main
-```
-
-Ganti `USERNAME` dan `NAMA_REPO` sesuai akun GitHub kamu.
-
 ## Lisensi
 
 ```
@@ -224,6 +209,6 @@ SOFTWARE.
 
 <div align="center">
 
-Made with ❤️ + ☕ by **FitoRifqi** &nbsp;·&nbsp; Powered by Arduino & Python
+Made by **FitoRifqi** &nbsp;·&nbsp; Powered by Arduino & Python
 
 </div>
