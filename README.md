@@ -16,13 +16,16 @@ Project ini menghubungkan Python di macOS dengan Arduino untuk membuat dashboard
 
 - Menampilkan judul lagu dari Apple Music dengan scrolling text.
 - Visualizer spectrum 16-band logaritmik di LCD 16x2.
-- LED PWM concert-style dengan kick drum detection (40-100Hz).
-- Beat detection menggunakan spectral flux + adaptive median threshold.
-- Mode monitor otomatis saat musik pause atau Apple Music tidak berjalan.
-- Menampilkan jam, tanggal, CPU, dan RAM.
+- **Hardware-accelerated Smooth LED Fading** — decay eksponensial langsung di Arduino (60fps) untuk efek concert lighting yang sangat natural.
+- **Beat detection tingkat lanjut** menggunakan spectral flux + adaptive median threshold (fokus kick drum 40-100Hz).
+- **Real-time BPM Detector** — menghitung BPM secara presisi dengan sistem cooldown.
+- Mode monitor otomatis saat musik pause atau Apple Music tidak berjalan (Jam, Tanggal, CPU, RAM).
 - Web dashboard real-time bertema audio console di `http://localhost:5050`.
-- LED strip meter, VU meter, dan spectrum analyzer di browser.
-- Akses dashboard dari perangkat lain di jaringan WiFi yang sama.
+- **Fitur Premium Web Dashboard:**
+  - **Real Album Art:** Mengambil cover album lagu yang sedang diputar secara otomatis dari iTunes Search API.
+  - **Play History:** Mencatat otomatis riwayat lagu yang diputar ke `play_history.json`.
+  - **Beat Flash Overlay:** Efek visual kedipan cahaya pada layar web yang tersinkronisasi dengan bass lagu.
+  - Akses dashboard dari perangkat lain di jaringan WiFi yang sama.
 - Konfigurasi serial port dan audio device lewat environment variable.
 
 ## Hardware
@@ -145,17 +148,18 @@ Setelah itu Python membaca input audio, melakukan FFT dengan NumPy menggunakan 1
 
 Bagian sebelum `|` adalah tinggi 16 kolom LCD. Bagian setelah `|` adalah brightness LED.
 
-### Beat Detection
+### Beat Detection & Smooth LED Fading
 
-LED menggunakan algoritma concert-style beat detection:
+Sistem ini menggunakan algoritma deteksi *beat* kelas profesional:
 
-1. **Bass-only spectral flux** — perubahan energi dihitung hanya di range 0-150Hz, mengabaikan hi-hat, cymbal, dan vocal.
-2. **Kick drum focus (40-100Hz)** — menggunakan peak amplitude (bukan mean) untuk mendeteksi pukulan kick drum dengan akurat.
-3. **Adaptive median threshold** — threshold otomatis menyesuaikan volume dan tempo lagu.
-4. **Beat cooldown 80ms** — mencegah ghost trigger / double-flash.
-5. **Concert-style response** — flash instan ke 210-255 saat beat terdeteksi, lalu blackout cepat (decay 0.50).
+1. **Bass-only spectral flux** — mendeteksi lonjakan energi (onset) hanya di area frekuensi kick drum, mengabaikan vokal dan melodi.
+2. **Adaptive median threshold** — sensitivitas beradaptasi secara dinamis terhadap keras/pelannya lagu (anti-bocor).
+3. **BPM Detector dengan Cooldown** — mengkalkulasi jarak antar ketukan bass untuk menemukan BPM lagu secara presisi.
+4. **Zero-Latency Execution** — Transmisi serial sangat cepat, dan efek redup (decay) LED ditangani secara independen oleh Arduino di 60fps untuk transisi super mulus.
 
-Jika musik tidak berjalan, Python mengirim data monitor:
+### Mode Monitor
+
+Jika musik tidak berjalan, Python mengirim data sistem:
 
 ```text
 SYS:JAM,TANGGAL,CPU,RAM
@@ -194,12 +198,13 @@ Saat `music_sync.py` dijalankan, web dashboard otomatis aktif di:
 http://localhost:5050
 ```
 
-Dashboard menggunakan tema audio console dengan tampilan:
+Dashboard menggunakan tema premium *audio console* dengan antarmuka yang dinamis:
 
-- **Now Playing** — judul lagu dan artist dengan EQ bar animation.
-- **Spectrum Analyzer** — visualizer 16-band real-time dengan peak hold indicator, label frekuensi (Hz), dan skala dB.
-- **LED Output** — LED strip meter hijau/kuning/merah seperti mixer audio.
-- **System Monitor** — jam, tanggal, CPU load, dan memory dengan VU meter bar.
+- **Now Playing Card** — Menampilkan judul lagu, artis, dan **Real Album Art** (terintegrasi API iTunes) dengan efek *glow* yang berdenyut sesuai *beat*.
+- **Spectrum Analyzer** — Visualizer 16-band *real-time* dengan *peak hold indicator*, label frekuensi (Hz), dan skala dB. Di lengkapi juga dengan indikator **BPM (Beats Per Minute)**.
+- **Beat Flash** — Kilatan layar interaktif di sisi kiri/kanan yang merespons pukulan bass lagu.
+- **Play History** — Tabel riwayat lagu-lagu yang baru saja Anda putar secara lokal.
+- **System Monitor** — Indikator jam digital, tanggal, CPU load, dan memory usage dengan animasi *fluid bar*.
 
 Teknologi: Flask + Server-Sent Events (SSE) + Canvas API.
 

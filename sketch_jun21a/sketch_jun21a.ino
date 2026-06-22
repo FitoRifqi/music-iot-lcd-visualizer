@@ -14,6 +14,13 @@ String currentMode = "MONITOR";
 int scrollPos = 0;
 unsigned long lastScrollTime = 0;
 
+// Smooth LED fade — independent dari frame rate Python
+float     ledSmooth           = 0.0f;
+byte      ledTarget           = 0;
+unsigned long lastLedTick     = 0;
+const float   LED_DECAY       = 0.88f;  // decay per 16ms tick (~600ms ke nol)
+const unsigned long LED_TICK  = 16;     // ~62fps update rate
+
 byte vBar1[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F};
 byte vBar2[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F};
 byte vBar3[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F, 0x1F};
@@ -23,6 +30,26 @@ byte vBar6[8] = {0x00, 0x00, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F};
 byte vBar7[8] = {0x00, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F};
 byte vBar8[8] = {0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F};
 
+// Instant attack, smooth exponential decay
+void setLedTarget(byte value) {
+  ledTarget = value;
+  if ((float)value > ledSmooth) {
+    ledSmooth = (float)value;  // langsung naik saat beat
+  }
+}
+
+void updateLedSmooth() {
+  if (millis() - lastLedTick < LED_TICK) return;
+  lastLedTick = millis();
+  if ((float)ledTarget > ledSmooth) {
+    ledSmooth = (float)ledTarget;
+  } else if (ledSmooth > 0.5f) {
+    ledSmooth *= LED_DECAY;
+    if (ledSmooth < 0.5f) ledSmooth = 0.0f;
+  }
+  analogWrite(LED_PIN, (byte)ledSmooth);
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
@@ -31,6 +58,17 @@ void setup() {
   lcd.backlight();
   loadMusicChars();
   lcd.clear();
+
+  // Tampilkan splash singkat — sekaligus flush buffer serial yang kotor
+  lcd.setCursor(0, 0);
+  lcd.print("  Music IoT LCD ");
+  lcd.setCursor(0, 1);
+  lcd.print("   Loading...   ");
+  delay(1500);
+  lcd.clear();
+
+  // Buang sisa data serial yang mungkin masuk saat reset
+  while (Serial.available()) Serial.read();
 }
 
 void loadMusicChars() {
@@ -86,7 +124,7 @@ void renderSystemData(String data) {
   lcd.setCursor(0, 1);
   printPadded(dateText + " | RAM:" + (ram < 10 ? " " : "") + String(ram) + "%", LCD_COLUMNS);
 
-  analogWrite(LED_PIN, map(ram, 0, 100, 0, 255));
+  setLedTarget((byte)map(ram, 0, 100, 0, 255));
 }
 
 void renderTrackTitle(String data) {
@@ -100,36 +138,64 @@ void renderVisualizer(String data) {
     return;
   }
 
-  int pipeIndex = data.indexOf('|');
-  if (pipeIndex == -1) {
-    return;
+  // Format paket: "col0,col1,...|brightness|bpm"
+  int pipeIdx1 = data.indexOf('|');
+  if (pipeIdx1 == -1) return;
+
+  String lcdData = data.substring(0, pipeIdx1);
+  String rest    = data.substring(pipeIdx1 + 1);
+
+  int pipeIdx2 = rest.indexOf('|');
+  int brightness, bpm;
+  if (pipeIdx2 == -1) {
+    brightness = constrain(rest.toInt(), 0, 255);
+    bpm = 0;
+  } else {
+    brightness = constrain(rest.substring(0, pipeIdx2).toInt(), 0, 255);
+    bpm        = constrain(rest.substring(pipeIdx2 + 1).toInt(), 0, 999);
   }
 
-  String lcdData = data.substring(0, pipeIndex);
-  int brightness = constrain(data.substring(pipeIndex + 1).toInt(), 0, 255);
-
+  // Render 12 bar visualizer di kolom 0-11 (ROW 1)
+  const byte VIZ_COLS = 12;
   byte column = 0;
   int startIndex = 0;
 
-  while (column < LCD_COLUMNS && startIndex <= lcdData.length()) {
+  while (column < VIZ_COLS && startIndex <= (int)lcdData.length()) {
     int commaIndex = lcdData.indexOf(',', startIndex);
     String valueText = commaIndex == -1
       ? lcdData.substring(startIndex)
       : lcdData.substring(startIndex, commaIndex);
 
     int value = constrain(valueText.toInt(), 0, 8);
-    lcd.setCursor(column, 1);
-    value > 0 ? lcd.write(value) : lcd.print(" ");
+    lcd.setCursor(column, 1);  // row 1 = baris bawah
+    if (value > 0) lcd.write((uint8_t)value);
+    else lcd.print(" ");
 
-    if (commaIndex == -1) {
-      break;
-    }
-
+    if (commaIndex == -1) break;
     startIndex = commaIndex + 1;
     column++;
   }
 
-  analogWrite(LED_PIN, brightness);
+  // Isi sisa kolom visualizer yang belum terisi
+  while (column < VIZ_COLS) {
+    lcd.setCursor(column, 1);
+    lcd.print(" ");
+    column++;
+  }
+
+  // Tampilkan BPM di kolom 12-15 (ROW 1), right-aligned 4 karakter
+  String bpmText;
+  if (bpm > 0) {
+    bpmText = String(bpm);
+    while ((int)bpmText.length() < 4) bpmText = " " + bpmText;
+    if ((int)bpmText.length() > 4) bpmText = bpmText.substring(0, 4);
+  } else {
+    bpmText = "    ";  // kosong saat BPM belum terdeteksi
+  }
+  lcd.setCursor(12, 1);
+  lcd.print(bpmText);
+
+  setLedTarget((byte)brightness);
 }
 
 void parseAndRender(String data) {
@@ -157,16 +223,20 @@ void scrollTrackTitle() {
     return;
   }
 
-  String displayText = "Now Playing: " + songTitle + "   ";
-  if (scrollPos >= displayText.length()) {
+  // Tambah padding di depan agar judul tidak langsung muncul dari tepi
+  String displayText = songTitle + "   ";
+  if (scrollPos >= (int)displayText.length()) {
     scrollPos = 0;
   }
 
-  String currentView = displayText.substring(scrollPos, scrollPos + LCD_COLUMNS);
-  while (currentView.length() < LCD_COLUMNS) {
-    currentView += " ";
+  // Ambil 16 karakter dari posisi scroll saat ini
+  String currentView = "";
+  for (byte i = 0; i < LCD_COLUMNS; i++) {
+    int idx = (scrollPos + i) % displayText.length();
+    currentView += displayText[idx];
   }
 
+  // Tulis hanya ke ROW 0 — row 1 khusus visualizer
   lcd.setCursor(0, 0);
   lcd.print(currentView);
   scrollPos++;
@@ -178,16 +248,22 @@ void readSerialInput() {
     char receivedChar = Serial.read();
 
     if (receivedChar == '\n') {
-      parseAndRender(inputBuffer);
+      if (inputBuffer.length() > 0) {
+        parseAndRender(inputBuffer);
+      }
       inputBuffer = "";
       return;
     }
 
-    inputBuffer += receivedChar;
+    // Proteksi buffer overflow (Arduino RAM terbatas)
+    if (inputBuffer.length() < 200) {
+      inputBuffer += receivedChar;
+    }
   }
 }
 
 void loop() {
   scrollTrackTitle();
   readSerialInput();
+  updateLedSmooth();  // smooth PWM fade independen
 }

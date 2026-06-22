@@ -160,46 +160,65 @@
         .track-display {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 16px;
         }
 
-        .track-indicator {
-            width: 40px;
-            height: 40px;
-            background: var(--bg-inset);
-            border: 1px solid var(--border-panel);
-            border-radius: 4px;
+        /* Vinyl disc artwork placeholder */
+        .artwork-wrapper {
+            width: 76px;
+            height: 76px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        /* Square album art card */
+        .artwork-card {
+            position: absolute;
+            inset: 0;
+            border-radius: 10px;
+            border: 1.5px solid var(--border-panel);
+            overflow: hidden;
+            background: linear-gradient(145deg, #1e1b2e 0%, #111019 100%);
+            transition: border-color 0.4s ease, box-shadow 0.12s ease;
+        }
+
+        /* Album art image — fills the card */
+        .album-art-img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            transition: opacity 0.6s ease;
+        }
+
+        .album-art-img.visible { opacity: 1; }
+
+        /* Placeholder when no art */
+        .artwork-placeholder {
+            position: absolute;
+            inset: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
-            position: relative;
+            pointer-events: none;
         }
 
-        .track-indicator .eq-bars {
-            display: flex;
-            align-items: flex-end;
-            gap: 2px;
-            height: 18px;
+        .artwork-icon {
+            font-size: 1.5rem;
+            color: var(--text-dim);
+            transition: color 0.4s ease;
         }
 
-        .eq-bar {
-            width: 3px;
-            background: var(--led-green);
-            border-radius: 1px;
-            transition: height 0.15s ease;
-        }
-
-        .eq-bars.active .eq-bar:nth-child(1) { height: 8px; animation: eqBounce 0.8s ease-in-out infinite; }
-        .eq-bars.active .eq-bar:nth-child(2) { height: 14px; animation: eqBounce 0.6s ease-in-out 0.1s infinite; }
-        .eq-bars.active .eq-bar:nth-child(3) { height: 10px; animation: eqBounce 0.7s ease-in-out 0.2s infinite; }
-        .eq-bars.active .eq-bar:nth-child(4) { height: 6px; animation: eqBounce 0.9s ease-in-out 0.05s infinite; }
-
-        .eq-bars:not(.active) .eq-bar { height: 3px; background: var(--text-dim); }
-
-        @keyframes eqBounce {
-            0%, 100% { transform: scaleY(1); }
-            50% { transform: scaleY(0.4); }
+        /* Beat-reactive glow ring */
+        .artwork-pulse {
+            position: absolute;
+            inset: -3px;
+            border-radius: 13px;
+            border: 2px solid rgba(139, 92, 246, 0);
+            transition: border-color 0.07s ease, box-shadow 0.07s ease;
+            pointer-events: none;
         }
 
         .track-meta {
@@ -355,6 +374,77 @@
         .vu-value.cpu-val { color: var(--led-cyan); }
         .vu-value.ram-val { color: var(--led-amber); }
 
+        /* === RECENTLY PLAYED === */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .history-empty {
+            text-align: center;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            letter-spacing: 0.06em;
+            padding: 16px 0;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 4px;
+            background: var(--bg-inset);
+            border: 1px solid var(--border-groove);
+            transition: border-color 0.3s ease;
+        }
+
+        .history-item.recent {
+            border-color: rgba(139, 92, 246, 0.28);
+            background: rgba(139, 92, 246, 0.04);
+        }
+
+        .history-index {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.55rem;
+            color: var(--text-dim);
+            width: 14px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .history-meta {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .history-track {
+            font-size: 0.78rem;
+            font-weight: 500;
+            color: var(--text-bright);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-artist {
+            font-size: 0.63rem;
+            color: var(--text-mid);
+            margin-top: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-time {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.58rem;
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
         /* === CONNECTION === */
         .conn-bar {
             display: flex;
@@ -377,6 +467,34 @@
         .conn-dot.ok { background: var(--led-green); box-shadow: 0 0 4px rgba(34, 197, 94, 0.4); }
         .conn-dot.err { background: var(--led-red); }
 
+        /* === BEAT FLASH OVERLAY === */
+        #beatFlash {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            background: radial-gradient(
+                ellipse 85% 70% at 50% 48%,
+                rgba(139, 92, 246, 0.22) 0%,
+                rgba(109, 40, 217, 0.10) 38%,
+                transparent 68%
+            );
+            transition: opacity 0.18s ease-out;
+            will-change: opacity;
+        }
+
+        #beatFlash.active {
+            opacity: 1;
+            transition: opacity 0s; /* strobe: instant on, slow fade */
+        }
+
+        /* BPM badge */
+        #bpmDisplay {
+            font-variant-numeric: tabular-nums;
+            transition: color 0.4s ease;
+        }
+
         /* Responsive */
         @media (max-width: 480px) {
             .container { padding: 12px 8px; }
@@ -390,6 +508,8 @@
     </style>
 </head>
 <body>
+    <!-- Beat flash overlay: fires on every kick drum onset -->
+    <div id="beatFlash" aria-hidden="true"></div>
     <div class="container">
         <!-- Header -->
         <div class="header">
@@ -413,13 +533,14 @@
             </div>
             <div class="panel-body">
                 <div class="track-display">
-                    <div class="track-indicator">
-                        <div class="eq-bars" id="eqBars">
-                            <div class="eq-bar"></div>
-                            <div class="eq-bar"></div>
-                            <div class="eq-bar"></div>
-                            <div class="eq-bar"></div>
+                    <div class="artwork-wrapper">
+                        <div class="artwork-card" id="artworkDisc">
+                            <img id="albumArtImg" class="album-art-img" src="" alt="" />
+                            <div class="artwork-placeholder" id="artworkPlaceholder">
+                                <span class="artwork-icon" id="artworkIcon">&#9834;</span>
+                            </div>
                         </div>
+                        <div class="artwork-pulse" id="artworkPulse"></div>
                     </div>
                     <div class="track-meta">
                         <div class="track-name" id="trackTitle">No Signal</div>
@@ -432,8 +553,8 @@
         <!-- Spectrum Analyzer -->
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-label">Spectrum Analyzer</span>
-                <span class="panel-label" style="color: var(--led-green);">16-Band</span>
+                <span class="panel-label">Spectrum Analyzer &mdash; 16-Band</span>
+                <span class="panel-label" id="bpmDisplay" style="color: var(--text-dim);">-- BPM</span>
             </div>
             <div class="panel-body" style="padding: 12px;">
                 <div class="spectrum-section">
@@ -484,6 +605,19 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recently Played -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-label">Recently Played</span>
+                <span class="panel-label" id="historyCount" style="color: var(--text-dim);">— tracks</span>
+            </div>
+            <div class="panel-body" style="padding: 8px 16px 12px;">
+                <div id="historyList" class="history-list">
+                    <div class="history-empty">No tracks played yet</div>
                 </div>
             </div>
         </div>
@@ -668,6 +802,97 @@
 
         drawVisualizer();
 
+        // === Artwork Animation (square card, no spin) ===
+        let lastArtworkUrl = '';
+
+        function updateArtwork(isPlaying, brightness, artworkUrl) {
+            const card  = document.getElementById('artworkDisc');
+            const pulse = document.getElementById('artworkPulse');
+            const icon  = document.getElementById('artworkIcon');
+            const img   = document.getElementById('albumArtImg');
+
+            // --- Album art ---
+            if (artworkUrl && artworkUrl !== lastArtworkUrl) {
+                lastArtworkUrl = artworkUrl;
+                img.onload  = () => img.classList.add('visible');
+                img.onerror = () => img.classList.remove('visible');
+                img.src = artworkUrl;
+            } else if (!artworkUrl && lastArtworkUrl) {
+                lastArtworkUrl = '';
+                img.classList.remove('visible');
+                img.src = '';
+            }
+
+            // --- Beat-reactive glow ---
+            if (isPlaying) {
+                const t = brightness / 255;
+                const glowPx = Math.round(4 + t * 14);
+                const ringA  = (0.2  + t * 0.65).toFixed(2);
+                const glowA  = (0.08 + t * 0.32).toFixed(2);
+                const cardA  = (0.12 + t * 0.38).toFixed(2);
+
+                pulse.style.borderColor = `rgba(139,92,246,${ringA})`;
+                pulse.style.boxShadow   = `0 0 ${glowPx}px rgba(139,92,246,${glowA})`;
+                card.style.borderColor  = `rgba(139,92,246,${cardA})`;
+                card.style.boxShadow    = `0 0 ${Math.round(glowPx * 0.4)}px rgba(139,92,246,${(glowA * 0.5).toFixed(2)})`;
+            } else {
+                icon.style.color        = 'var(--text-dim)';
+                pulse.style.borderColor = 'rgba(139,92,246,0)';
+                pulse.style.boxShadow   = '';
+                card.style.borderColor  = 'var(--border-panel)';
+                card.style.boxShadow    = '';
+            }
+        }
+
+        // === Recently Played ===
+        function escHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str));
+            return d.innerHTML;
+        }
+
+        function updateHistory(history) {
+            const list    = document.getElementById('historyList');
+            const countEl = document.getElementById('historyCount');
+            if (!history || history.length === 0) {
+                list.innerHTML = '<div class="history-empty">No tracks played yet</div>';
+                countEl.textContent = '— tracks';
+                return;
+            }
+            const n = history.length;
+            countEl.textContent = `${n} track${n !== 1 ? 's' : ''}`;
+            list.innerHTML = history.slice(0, 5).map((item, idx) => {
+                const parts  = (item.track || '').split(' - ');
+                const title  = parts[0] || item.track;
+                const artist = parts.length > 1 ? parts.slice(1).join(' - ') : '';
+                return `<div class="history-item${idx === 0 ? ' recent' : ''}">
+                    <span class="history-index">${idx + 1}</span>
+                    <div class="history-meta">
+                        <div class="history-track">${escHtml(title)}</div>
+                        ${ artist ? `<div class="history-artist">${escHtml(artist)}</div>` : '' }
+                    </div>
+                    <span class="history-time">${escHtml(item.played_at || '')}</span>
+                </div>`;
+            }).join('');
+        }
+
+        // === Beat Flash ===
+        let prevBrightness = 0;
+        let flashTimer = null;
+        const BEAT_ONSET_THRESHOLD = 155;
+
+        function handleBeatFlash(brightness) {
+            const isOnset = brightness > BEAT_ONSET_THRESHOLD
+                         && prevBrightness <= BEAT_ONSET_THRESHOLD;
+            if (isOnset) {
+                const overlay = document.getElementById('beatFlash');
+                overlay.classList.add('active');
+                clearTimeout(flashTimer);
+                flashTimer = setTimeout(() => overlay.classList.remove('active'), 35);
+            }
+            prevBrightness = brightness;
+        }
+
         // === SSE Connection ===
         function connectSSE() {
             const source = new EventSource("/api/stream");
@@ -702,36 +927,46 @@
             statusText.style.color = isPlaying ? "var(--led-green)" : "var(--led-amber)";
 
             // Track info
-            const eqBars = document.getElementById("eqBars");
             const title = document.getElementById("trackTitle");
             const artist = document.getElementById("trackArtist");
-
             if (isPlaying && data.track) {
-                eqBars.className = "eq-bars active";
                 const parts = data.track.split(" - ");
                 title.textContent = parts[0] || data.track;
                 title.style.color = "var(--text-bright)";
                 artist.textContent = parts.length > 1 ? parts.slice(1).join(" - ") : "";
             } else {
-                eqBars.className = "eq-bars";
                 title.textContent = "No Signal";
                 title.style.color = "var(--text-dim)";
                 artist.textContent = "Waiting for input...";
             }
 
-            // Visualizer
+            // Artwork pulse animation + beat flash
+            updateArtwork(isPlaying, data.brightness || 0, data.artwork_url || '');
+            handleBeatFlash(data.brightness || 0);
+
+            // Spectrum visualizer
             if (data.visualizer && data.visualizer.length === COLUMNS) {
                 for (let i = 0; i < COLUMNS; i++) {
                     targetValues[i] = data.visualizer[i];
                 }
             }
 
-            // LED Brightness strip
+            // LED brightness strip
             const brightPct = Math.round((data.brightness / 255) * 100);
             document.getElementById("brightnessValue").textContent = brightPct + "%";
             updateLedStrip(brightPct);
 
-            // System
+            // BPM badge
+            const bpm = data.bpm || 0;
+            const bpmEl = document.getElementById('bpmDisplay');
+            if (bpmEl) {
+                bpmEl.textContent = bpm > 0 ? bpm + ' BPM' : '-- BPM';
+                bpmEl.style.color = bpm > 0 && isPlaying
+                    ? 'var(--led-cyan)'
+                    : 'var(--text-dim)';
+            }
+
+            // System monitor
             document.getElementById("sysTime").textContent = data.time || "--:--";
             document.getElementById("sysDate").textContent = data.date || "-- ---";
 
@@ -742,6 +977,9 @@
             const ram = data.ram || 0;
             document.getElementById("ramValue").textContent = ram + "%";
             document.getElementById("ramBar").style.width = ram + "%";
+
+            // Recently played
+            updateHistory(data.history);
         }
 
         connectSSE();

@@ -1,7 +1,12 @@
+import json
 import os
+import re
+import ssl
 import subprocess
 import threading
 import time
+import urllib.parse
+import urllib.request
 from datetime import datetime
 
 import numpy as np
@@ -84,6 +89,31 @@ def get_now_playing():
         return "IDLE"
 
 
+def fetch_album_art_url(track_name: str) -> str:
+    """Fetch album artwork URL dari iTunes Search API (public, no auth)."""
+    try:
+        # "Song - Artist" → "Song Artist" supaya iTunes matching lebih akurat
+        search_term = track_name.replace(" - ", " ")
+        query = urllib.parse.quote(search_term)
+        url = (
+            "https://itunes.apple.com/search"
+            f"?term={query}&media=music&entity=song&limit=1"
+        )
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(url, timeout=6, context=ctx) as resp:
+            data = json.loads(resp.read().decode())
+        results = data.get("results", [])
+        if not results:
+            return ""
+        art = results[0].get("artworkUrl100", "")
+        if not art:
+            return ""
+        # Upgrade ke 600x600 — regex replace NxNbb dengan 600x600bb
+        return re.sub(r"\d+x\d+bb", "600x600bb", art)
+    except Exception:
+        return ""
+
+
 def open_audio_stream(audio):
     return audio.open(
         format=FORMAT,
@@ -138,14 +168,29 @@ def calculate_bass_brightness(
         # Concert-style: langsung full brightness, semakin kuat semakin terang
         hit_strength = min(1.0, combined_bass / 200.0)
         target = int(200 + hit_strength * 55)  # range 200-255
-        return min(255, target)
+        return min(255, target), True
 
     # Blackout cepat — kontras tajam seperti strobe lighting
-    return max(0, int(current_brightness * DECAY_FACTOR))
+    return max(0, int(current_brightness * DECAY_FACTOR)), False
+
+
+def calculate_bpm(beat_timestamps: list, now: float) -> int:
+    """Estimasi BPM dari interval antar beat (window 8 detik terakhir)."""
+    recent = [t for t in beat_timestamps if now - t < 8.0]
+    if len(recent) < 2:
+        return 0
+    intervals = [recent[i] - recent[i - 1] for i in range(1, len(recent))]
+    if not intervals:
+        return 0
+    avg_interval = float(np.mean(intervals))
+    if avg_interval < 0.15:  # lebih dari 400 BPM = noise
+        return 0
+    bpm = 60.0 / avg_interval
+    return int(round(min(200, max(40, bpm))))
 
 
 def build_visualizer_packet(
-    stream, flux_history, current_brightness, previous_fft
+    stream, flux_history, current_brightness, previous_fft, bpm: int = 0
 ):
     data = stream.read(CHUNK, exception_on_overflow=False)
     samples = np.frombuffer(data, dtype=np.int16)
@@ -168,7 +213,7 @@ def build_visualizer_packet(
     sub_bass_amp = float(np.mean(sub_bass_freq)) if len(sub_bass_freq) else 0.0
     mid_bass_amp = float(np.mean(mid_bass_freq)) if len(mid_bass_freq) else 0.0
 
-    brightness = calculate_bass_brightness(
+    brightness, is_beat = calculate_bass_brightness(
         kick_amp,
         sub_bass_amp,
         mid_bass_amp,
@@ -195,10 +240,11 @@ def build_visualizer_packet(
         column_values.append(clamped)
 
     return (
-        f"{','.join(columns)}|{brightness}\n",
+        f"{','.join(columns)}|{brightness}|{bpm}\n",
         brightness,
         fft_data,
         column_values,
+        is_beat,
     )
 
 
@@ -229,6 +275,7 @@ def main():
     psutil.cpu_percent()
 
     shared_state = create_shared_state()
+    shared_state.load_history()
 
     dashboard_thread = threading.Thread(
         target=start_dashboard,
@@ -260,6 +307,9 @@ def main():
     last_metadata_check = 0
     last_system_check = 0
     previous_fft = None
+    beat_timestamps: list = []
+    current_bpm = 0
+    last_bpm_beat_time: float = 0.0
 
     try:
         while True:
@@ -271,16 +321,37 @@ def main():
                     music_state = "PLAYING"
                     track_info = status.removeprefix("PLAYING:")
                     if track_info != current_track_name:
+                        if current_track_name:
+                            shared_state.add_to_history(
+                                current_track_name,
+                                datetime.now().strftime("%H:%M"),
+                            )
                         current_track_name = track_info
                         arduino.write(f"TXT:{current_track_name}\n".encode())
+                        # Fetch album art di background — non-blocking
+                        _name = current_track_name
+                        threading.Thread(
+                            target=lambda n=_name: shared_state.update(
+                                artwork_url=fetch_album_art_url(n)
+                            ),
+                            daemon=True,
+                        ).start()
                     shared_state.update(
                         mode="PLAYING",
                         track=current_track_name,
                     )
                 else:
+                    if current_track_name:
+                        shared_state.add_to_history(
+                            current_track_name,
+                            datetime.now().strftime("%H:%M"),
+                        )
                     music_state = "MONITOR"
                     current_track_name = ""
-                    shared_state.update(mode="MONITOR", track="")
+                    beat_timestamps.clear()
+                    current_bpm = 0
+                    last_bpm_beat_time = 0.0
+                    shared_state.update(mode="MONITOR", track="", bpm=0, artwork_url="")
                 last_metadata_check = now
 
             # Selalu update system stats ke dashboard, apapun mode-nya
@@ -309,18 +380,31 @@ def main():
                 last_system_check = now
 
             if music_state == "PLAYING":
-                packet, current_brightness, previous_fft, col_values = (
+                packet, current_brightness, previous_fft, col_values, is_beat = (
                     build_visualizer_packet(
                         stream,
                         flux_history,
                         current_brightness,
                         previous_fft,
+                        bpm=current_bpm,
                     )
                 )
+                if is_beat:
+                    now_beat = time.time()
+                    # Cooldown 300ms antar beat — cegah double-count pada transien cepat
+                    if now_beat - last_bpm_beat_time >= 0.30:
+                        last_bpm_beat_time = now_beat
+                        beat_timestamps.append(now_beat)
+                        if len(beat_timestamps) > 16:
+                            beat_timestamps.pop(0)
+                        new_bpm = calculate_bpm(beat_timestamps, now_beat)
+                        if new_bpm > 0:
+                            current_bpm = new_bpm
                 arduino.write(packet.encode())
                 shared_state.update(
                     visualizer=col_values,
                     brightness=current_brightness,
+                    bpm=current_bpm,
                 )
                 time.sleep(0.01)
                 continue

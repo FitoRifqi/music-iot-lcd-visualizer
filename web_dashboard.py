@@ -11,6 +11,9 @@ import time
 
 from flask import Flask, Response, render_template
 
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "play_history.json")
+MAX_HISTORY = 10
+
 
 class SharedState:
     """Thread-safe container for dashboard state."""
@@ -26,15 +29,45 @@ class SharedState:
             "ram": 0,
             "time": "--:--",
             "date": "-- ---",
+            "history": [],
+            "bpm": 0,
+            "artwork_url": "",
         }
 
     def update(self, **kwargs):
         with self._lock:
             self._data.update(kwargs)
 
+    def add_to_history(self, track: str, played_at: str) -> None:
+        """Add a track to play history and persist to disk."""
+        with self._lock:
+            history = self._data["history"]
+            if history and history[0]["track"] == track:
+                return
+            entry = {"track": track, "played_at": played_at}
+            self._data["history"] = [entry] + history[: MAX_HISTORY - 1]
+            snapshot = list(self._data["history"])
+        try:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as fh:
+                json.dump(snapshot, fh, indent=2, ensure_ascii=False)
+        except OSError:
+            pass
+
+    def load_history(self) -> None:
+        """Load play history from disk (called at startup)."""
+        try:
+            with open(HISTORY_FILE, encoding="utf-8") as fh:
+                history = json.load(fh)
+            with self._lock:
+                self._data["history"] = history[:MAX_HISTORY]
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
+
     def snapshot(self):
         with self._lock:
-            return dict(self._data)
+            data = dict(self._data)
+            data["history"] = list(self._data["history"])
+            return data
 
 
 def create_shared_state():
